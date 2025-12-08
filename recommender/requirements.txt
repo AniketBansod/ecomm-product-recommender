@@ -9,3 +9,4 @@ python-dotenv
 openai        # optional: for GPT-4o-mini
 requests
 pydantic
+redis
