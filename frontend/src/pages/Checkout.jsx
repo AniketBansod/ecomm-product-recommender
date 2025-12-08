@@ -63,6 +63,8 @@ export default function Checkout() {
         user_id,
         address,
         payment_mode: "COD",
+        // Provide guest_id so backend can migrate cart if needed
+        guest_id: getGuestId(),
       });
 
       // 2️⃣ Log PURCHASE event for each product

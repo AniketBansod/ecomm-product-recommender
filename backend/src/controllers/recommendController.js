@@ -6,6 +6,15 @@ export const getRecommendations = async (req, res) => {
   try {
     const sessionId = req.query.session_id || req.sessionId;
     const k = Number(req.query.k) || 5;
+    const filter_category = req.query.filter_category || undefined;
+    const min_price =
+      req.query.min_price !== undefined && req.query.min_price !== ""
+        ? Number(req.query.min_price)
+        : undefined;
+    const max_price =
+      req.query.max_price !== undefined && req.query.max_price !== ""
+        ? Number(req.query.max_price)
+        : undefined;
 
     if (!sessionId) {
       return res.status(400).json({ error: "session_id is required" });
@@ -36,7 +45,10 @@ export const getRecommendations = async (req, res) => {
       params: {
         user_id: sessionId,
         k,
-      }
+        ...(filter_category ? { filter_category } : {}),
+        ...(min_price !== undefined ? { min_price } : {}),
+        ...(max_price !== undefined ? { max_price } : {}),
+      },
     });
 
     // FastAPI returns { cached, results: [{ product_id, score, product: {...} }] }

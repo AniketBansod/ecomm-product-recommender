@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { apiGet } from "../utils/api";
 import { useAuth } from "../context/AuthContext";
 import { getGuestId } from "../utils/guest";
@@ -10,6 +10,7 @@ export default function ProductDetail() {
   const { id } = useParams();
   const { user } = useAuth();
   const { addToCart } = useCart();
+  const navigate = useNavigate();
 
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -321,6 +322,8 @@ export default function ProductDetail() {
                   onClick={() => {
                     addToCart(product.product_id, qty);
                     logEvent("buy_now", product.product_id, user);
+                    // Navigate to checkout after adding to cart
+                    navigate("/checkout");
                   }}
                   className="inline-flex items-center justify-center rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-900 shadow-sm transition hover:shadow-md"
                 >

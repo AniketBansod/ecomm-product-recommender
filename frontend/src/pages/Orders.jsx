@@ -1,32 +1,54 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
-import { getGuestId } from "../utils/guest";
 import { apiGet } from "../utils/api";
 import { Link } from "react-router-dom";
 
 export default function Orders() {
-  const { user } = useAuth();
-  // Support various auth payload shapes: {user_id}, {id}, {_id}
-  const uid = user?.user_id || user?.id || user?._id; // Orders must be tied to authenticated users only
+  const { user, loading: authLoading } = useAuth();
+  // Derive uid robustly, even during brief hydration gaps
+  const storedUid = useMemo(() => {
+    try {
+      const raw = localStorage.getItem("auth_user");
+      if (!raw) return undefined;
+      const u = JSON.parse(raw);
+      return u?.user_id || u?.id || u?._id;
+    } catch {
+      return undefined;
+    }
+  }, []);
+  const uid = user?.user_id || user?.id || user?._id || storedUid;
 
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!uid) return; // don't fetch if not logged in
+    if (authLoading) return; // wait until auth hydrates
+    if (!uid) return; // need a user id to fetch
     async function loadOrders() {
       try {
         const res = await apiGet(`/order/${uid}`);
         setOrders(res || []);
       } catch (err) {
         console.error("Order fetch error:", err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
     loadOrders();
-  }, [uid]);
+  }, [uid, authLoading]);
 
-  if (!uid) {
+  if (authLoading) {
+    return (
+      <div className="mx-auto max-w-6xl px-4 py-10">
+        <div className="grid place-items-center">
+          <div className="h-8 w-40 animate-pulse rounded bg-gray-200" />
+        </div>
+      </div>
+    );
+  }
+
+  // If auth finished and neither context user nor stored uid exists, prompt login
+  if (!authLoading && !user && !storedUid) {
     return (
       <div className="mx-auto max-w-6xl px-4 py-20 text-center">
         <h2 className="text-xl font-semibold text-gray-800">Login required</h2>

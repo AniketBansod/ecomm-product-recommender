@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 import faiss
 from utils import load_products, load_embeddings, compute_embeddings
 from typing import List, Optional
+import math
 import openai
 import uvicorn
 import requests
@@ -66,6 +67,32 @@ else:
 # ----------------------------------------------------
 # HELPERS
 # ----------------------------------------------------
+def clean_json(obj):
+    """Recursively sanitize values for JSON: replace NaN/Inf with sensible defaults
+    and convert numpy types to native Python."""
+    import numpy as _np
+    import math as _math
+
+    if isinstance(obj, dict):
+        return {k: clean_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [clean_json(v) for v in obj]
+    # numpy types
+    if isinstance(obj, (_np.integer,)):
+        return int(obj)
+    if isinstance(obj, (_np.floating,)):
+        f = float(obj)
+        if not _math.isfinite(f):
+            return 0.0
+        return f
+    if isinstance(obj, _np.bool_):
+        return bool(obj)
+    # numbers
+    if isinstance(obj, (int, float)):
+        if isinstance(obj, float) and not _math.isfinite(obj):
+            return 0.0
+        return obj
+    return obj
 def vector_search(query_embedding: np.ndarray, top_k: int = 10):
     if index is None:
         raise HTTPException(status_code=500, detail="FAISS index not loaded")
@@ -269,6 +296,19 @@ def recommend(
     summary = requests.get(f"{NODE_BACKEND}/api/events/{user_id}").json()
     events = summary.get("recent_events", [])
 
+    # If a category filter is set, require that the session has activity in that category
+    if filter_category:
+        has_activity_in_category = False
+        for ev in events:
+            pid = str(ev.get("product_id"))
+            prod = product_lookup.get(pid)
+            if prod and prod.get("normalized_top_category") == filter_category:
+                has_activity_in_category = True
+                break
+        if not has_activity_in_category:
+            # Strict behavior: no activity in requested category → no recommendations
+            return {"cached": False, "results": []}
+
     # cache key
     evhash = events_hash(events)
     fcat = filter_category or "all"
@@ -281,60 +321,81 @@ def recommend(
         return {"cached": True, "results": cached}
 
     # compute user vector
+    if index is None or embeddings is None or len(PRODUCT_IDS) == 0:
+        # If model assets are not loaded, return empty gracefully
+        return {"cached": False, "results": []}
+
     if events:
         user_vec = compute_user_vector_from_events(events)
     else:
-        user_vec = np.mean(embeddings, axis=0).reshape(1, -1)
+        # Fallback to global centroid
+        try:
+            user_vec = np.nanmean(embeddings, axis=0).reshape(1, -1)
+        except Exception:
+            return {"cached": False, "results": []}
+        # Replace non-finite with zeros before normalization
+        user_vec = np.where(np.isfinite(user_vec), user_vec, 0.0)
         faiss.normalize_L2(user_vec)
 
     # FAISS search with larger candidate set
-    D, I = vector_search(user_vec, top_k=max(k * 5, 50))
+    try:
+        D, I = vector_search(user_vec, top_k=max(k * 5, 50))
+    except Exception:
+        return {"cached": False, "results": []}
 
     raw_candidates = []
     for sim_row, idx_row in zip(D.tolist(), I.tolist()):
         for sim, idx in zip(sim_row, idx_row):
+            # Skip non-finite similarities
+            try:
+                sf = float(sim)
+            except Exception:
+                continue
+            if not math.isfinite(sf):
+                continue
             pid = PRODUCT_IDS[idx]
             prod = product_lookup.get(pid)
             if not prod:
                 continue
 
-            # Price checks
-            price_ok = True
+            # Price checks (strict filter: drop if outside range)
             try:
                 p = float(prod.get("price") or 0)
             except Exception:
                 p = 0.0
             if min_price is not None and p < float(min_price):
-                price_ok = False
+                continue
             if max_price is not None and p > float(max_price):
-                price_ok = False
+                continue
 
-            # Category match flag
+            # Category filter (strict: include only matching category if set)
+            if filter_category and prod.get("normalized_top_category") != filter_category:
+                continue
+
+            # Category match flag for scoring info
             cat_match = 1 if (filter_category and prod.get("normalized_top_category") == filter_category) else 0
 
-            raw_candidates.append((pid, float(sim), prod, cat_match, price_ok))
+            raw_candidates.append((pid, sf, prod, cat_match))
 
-    # Separate candidates by filter match
-    filtered = []
+    # Candidates are already strictly filtered above
+    filtered = raw_candidates
     fallback_pool = []
-    for pid, sim, prod, cat_match, price_ok in raw_candidates:
-        if filter_category or (min_price is not None or max_price is not None):
-            if (not filter_category or cat_match == 1) and (min_price is None and max_price is None or price_ok):
-                filtered.append((pid, sim, prod, cat_match, price_ok))
-            else:
-                fallback_pool.append((pid, sim, prod, cat_match, price_ok))
-        else:
-            filtered.append((pid, sim, prod, cat_match, price_ok))
 
     # Scoring
     def norm_sim(x: float) -> float:
-        # clamp to [0,1]
-        return max(0.0, min(1.0, x))
+        # Handle NaN/inf and clamp to [0,1]
+        try:
+            xf = float(x)
+        except Exception:
+            return 0.0
+        if not math.isfinite(xf):
+            return 0.0
+        return max(0.0, min(1.0, xf))
 
     results_scored = []
-    for pid, sim, prod, cat_match, price_ok in filtered:
+    for pid, sim, prod, cat_match in filtered:
         ns = norm_sim(sim)
-        # price proximity
+        # price proximity (optional additive score, only if range given)
         if min_price is not None and max_price is not None and float(max_price) > float(min_price):
             mid = (float(min_price) + float(max_price)) / 2.0
             rng = (float(max_price) - float(min_price)) + 1.0
@@ -347,6 +408,8 @@ def recommend(
             price_score = 0.0
 
         final = RANK_ALPHA * ns + RANK_BETA * (cat_match if filter_category else 0.0) + RANK_GAMMA * price_score
+        if not math.isfinite(final):
+            final = 0.0
         results_scored.append((final, pid, sim, prod))
 
     # Sort by final score
@@ -358,19 +421,12 @@ def recommend(
     for final, pid, sim, prod in results_scored:
         if pid in seen:
             continue
-        chosen.append({"product_id": pid, "score": final, "product": prod})
+        chosen.append({"product_id": pid, "score": final, "product": clean_json(prod)})
         seen.add(pid)
         if len(chosen) >= k:
             break
 
-    if len(chosen) < k:
-        for pid, sim, prod, cat_match, price_ok in fallback_pool:
-            if pid in seen:
-                continue
-            chosen.append({"product_id": pid, "score": norm_sim(sim), "product": prod})
-            seen.add(pid)
-            if len(chosen) >= k:
-                break
+    # No fallback when filters are strict; we keep only filtered candidates
 
     set_json(cache_key, chosen, ex=RECOMMEND_TTL)
     return {"cached": False, "results": chosen}

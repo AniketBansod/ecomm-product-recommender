@@ -5,10 +5,33 @@ import Product from "../models/Product.js";
 // Place Order (checkout)
 export const placeOrder = async (req, res) => {
   try {
-    const { address, payment_mode } = req.body;
+    const { address, payment_mode, guest_id } = req.body;
     const user_id = req.sessionId || req.body.user_id;
 
-    const cart = await Cart.findOne({ user_id });
+    let cart = await Cart.findOne({ user_id });
+    // If user has no cart items but provided a guest_id, migrate guest cart
+    if ((!cart || cart.items.length === 0) && guest_id) {
+      const guestCart = await Cart.findOne({ user_id: String(guest_id) });
+      if (guestCart && guestCart.items.length > 0) {
+        // Move items from guest cart to user cart
+        if (!cart) {
+          cart = await Cart.create({ user_id, items: [] });
+        }
+        // Append items; if duplicates, sum quantities
+        const qtyMap = new Map();
+        for (const it of cart.items) {
+          qtyMap.set(it.product_id, (qtyMap.get(it.product_id) || 0) + it.quantity);
+        }
+        for (const it of guestCart.items) {
+          qtyMap.set(it.product_id, (qtyMap.get(it.product_id) || 0) + it.quantity);
+        }
+        cart.items = Array.from(qtyMap.entries()).map(([pid, q]) => ({ product_id: pid, quantity: q }));
+        await cart.save();
+        // Clear guest cart after migration
+        guestCart.items = [];
+        await guestCart.save();
+      }
+    }
     if (!cart || cart.items.length === 0) {
       return res.status(400).json({ message: "Cart is empty" });
     }
@@ -40,7 +63,7 @@ export const placeOrder = async (req, res) => {
       address
     });
 
-    // Clear cart
+    // Clear cart (user cart) after successful order
     cart.items = [];
     await cart.save();
 

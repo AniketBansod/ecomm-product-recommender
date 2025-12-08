@@ -299,9 +299,18 @@ export default function App() {
                 const showBadge =
                   !!filterCategory || minPrice !== "" || maxPrice !== "";
                 return (
-                  <div
+                  <a
                     key={item.product_id}
+                    href={`/product/${item.product_id}`}
                     className="group overflow-hidden rounded-2xl bg-white ring-1 ring-gray-100 shadow-sm hover:shadow-md transition flex flex-col"
+                    onClick={(e) => {
+                      // allow navigation; optionally log click
+                      try {
+                        // lazy import to avoid top-level import churn
+                        const { logEvent } = require("./utils/logEvent");
+                        logEvent("click", item.product_id, user);
+                      } catch (_) {}
+                    }}
                   >
                     <div className="aspect-square w-full overflow-hidden">
                       <img
@@ -335,13 +344,18 @@ export default function App() {
                         )}
                       </div>
                       <button
-                        onClick={() => openExplain(item)}
+                        type="button"
+                        onClick={(ev) => {
+                          // Prevent navigation for explanation click
+                          ev.preventDefault();
+                          openExplain(item);
+                        }}
                         className="text-xs text-indigo-600 hover:text-indigo-800 self-start"
                       >
                         Why this recommendation?
                       </button>
                     </div>
-                  </div>
+                  </a>
                 );
               })}
             </div>

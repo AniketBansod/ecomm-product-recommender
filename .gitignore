@@ -36,3 +36,33 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+# Global ignores for repo
+
+# Node
+node_modules/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Env files
+.env
+.env.local
+.env.production
+.env.*
+
+# Virtual environments
+venv/
+.venv/
+env/
+.envdir/
+
+# Build outputs
+backend/dist/
+frontend/dist/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
