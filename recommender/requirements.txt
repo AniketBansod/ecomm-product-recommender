@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+sentence-transformers==2.2.2
+faiss-cpu==1.7.4
+numpy
+pandas
+python-dotenv
+openai        # optional: for GPT-4o-mini
+requests
+pydantic
