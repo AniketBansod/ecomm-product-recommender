@@ -13,7 +13,9 @@ import recommendRoutes from "./routes/recommend.js";
 import eventRoutes from "./routes/event.routes.js";
 
 const app = express();
-app.use(cors());
+// Configure CORS from env; default to allowing localhost frontend
+const corsOrigin = process.env.CORS_ORIGIN || "http://localhost:5173";
+app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(express.json());
 app.use(morgan("dev"));
 
