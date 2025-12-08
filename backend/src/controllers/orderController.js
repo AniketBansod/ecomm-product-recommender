@@ -5,7 +5,8 @@ import Product from "../models/Product.js";
 // Place Order (checkout)
 export const placeOrder = async (req, res) => {
   try {
-    const { user_id, address, payment_mode } = req.body;
+    const { address, payment_mode } = req.body;
+    const user_id = req.sessionId || req.body.user_id;
 
     const cart = await Cart.findOne({ user_id });
     if (!cart || cart.items.length === 0) {
@@ -57,7 +58,7 @@ export const placeOrder = async (req, res) => {
 // Order History
 export const getOrders = async (req, res) => {
   try {
-    const user_id = req.params.user_id;
+    const user_id = req.sessionId || req.params.user_id;
     const orders = await Order.find({ user_id }).sort({ createdAt: -1 });
 
     res.json(orders);

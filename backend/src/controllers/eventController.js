@@ -3,7 +3,8 @@ import { getRedis } from "../config/redis.js";
 
 export const logEvent = async (req, res, next) => {
   try {
-    const { user_id, event_type, product_id, metadata } = req.body;
+    const { event_type, product_id, metadata } = req.body;
+    const user_id = req.sessionId || req.body.user_id;
     const ev = await Event.create({ user_id, event_type, product_id, metadata });
     // push to redis event buffer for quick access (store last 20)
     try {

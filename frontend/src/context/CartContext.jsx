@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { apiGet, apiPost } from "../utils/api";
+import { apiGet, apiPost, apiDelete } from "../utils/api";
 import { useAuth } from "./AuthContext";
 import { getGuestId } from "../utils/guest";
 
@@ -47,12 +47,14 @@ export function CartProvider({ children }) {
 
   // Clear cart
   async function clearCart() {
-    await apiPost(`/cart/clear/${uid}`);
+    await apiDelete(`/cart/clear/${uid}`);
     setCart([]);
   }
 
   return (
-    <CartContext.Provider value={{ cart, addToCart, removeFromCart, clearCart, loading }}>
+    <CartContext.Provider
+      value={{ cart, addToCart, removeFromCart, clearCart, loading }}
+    >
       {children}
     </CartContext.Provider>
   );

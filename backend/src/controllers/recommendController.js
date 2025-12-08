@@ -1,36 +1,41 @@
 import axios from "axios";
-import Event from "../models/Event.js";
+import EventLog from "../models/EventLog.js";
 import Product from "../models/Product.js";
 
 export const getRecommendations = async (req, res) => {
   try {
-    const sessionId = req.query.session_id;
+    const sessionId = req.query.session_id || req.sessionId;
     const k = Number(req.query.k) || 5;
 
     if (!sessionId) {
       return res.status(400).json({ error: "session_id is required" });
     }
 
-    // 1️⃣ Fetch recent user events
-    const events = await Event.find({ user_id: sessionId })
+    // 1️⃣ Fetch recent user events (EventLog is primary store consumed by FastAPI)
+    const events = await EventLog.find({ user_id: sessionId })
       .sort({ createdAt: -1 })
       .limit(10);
 
     const recentProductIds = events.map((e) => e.product_id);
 
+    // If no recent events for this session, return empty recommendations
+    if (!recentProductIds.length) {
+      return res.json({
+        session_id: sessionId,
+        recommended_products: [],
+        cached: false,
+        message: "No activity yet. Browse items to get recommendations.",
+      });
+    }
+
     // 2️⃣ Send to FastAPI recommender
     const recommenderURL = `${process.env.RECOMMENDER_API_URL}/recommend`;
 
-    // Build recent events payload expected by FastAPI (GET with JSON string)
-    const recentEvents = JSON.stringify(
-      recentProductIds.map((pid) => ({ product_id: String(pid), event_type: "view" }))
-    );
-
+    // FastAPI fetches events from Node directly; just pass user_id and k
     const response = await axios.get(recommenderURL, {
       params: {
         user_id: sessionId,
         k,
-        recent_events: recentEvents,
       }
     });
 

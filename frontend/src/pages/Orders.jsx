@@ -6,12 +6,14 @@ import { Link } from "react-router-dom";
 
 export default function Orders() {
   const { user } = useAuth();
-  const uid = user?.user_id || getGuestId();
+  // Support various auth payload shapes: {user_id}, {id}, {_id}
+  const uid = user?.user_id || user?.id || user?._id; // Orders must be tied to authenticated users only
 
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!uid) return; // don't fetch if not logged in
     async function loadOrders() {
       try {
         const res = await apiGet(`/order/${uid}`);
@@ -23,6 +25,31 @@ export default function Orders() {
     }
     loadOrders();
   }, [uid]);
+
+  if (!uid) {
+    return (
+      <div className="mx-auto max-w-6xl px-4 py-20 text-center">
+        <h2 className="text-xl font-semibold text-gray-800">Login required</h2>
+        <p className="mt-1 text-sm text-gray-600">
+          Please login to view your orders.
+        </p>
+        <div className="mt-4 flex items-center justify-center gap-3">
+          <Link
+            to="/login"
+            className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+          >
+            Go to Login
+          </Link>
+          <Link
+            to="/signup"
+            className="inline-flex items-center justify-center rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 shadow-sm transition hover:bg-gray-50"
+          >
+            Create Account
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   if (loading)
     return (

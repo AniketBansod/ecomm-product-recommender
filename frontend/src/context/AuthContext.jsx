@@ -3,7 +3,7 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);   // { user_id, token }
+  const [user, setUser] = useState(null); // { user_id, token }
   const [loading, setLoading] = useState(true);
 
   // Load user from localStorage on startup
@@ -16,8 +16,13 @@ export function AuthProvider({ children }) {
   }, []);
 
   function loginUser(data) {
-    setUser(data);
-    localStorage.setItem("auth_user", JSON.stringify(data));
+    // Normalize shape to ensure user_id exists for downstream consumers
+    const normalized = {
+      ...data,
+      user_id: data.user_id || data.id || data._id,
+    };
+    setUser(normalized);
+    localStorage.setItem("auth_user", JSON.stringify(normalized));
   }
 
   function logout() {

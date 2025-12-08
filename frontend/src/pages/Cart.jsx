@@ -184,13 +184,28 @@ export default function CartPage() {
               </div>
             );
           })}
-          <button
-            type="button"
-            className="mt-2 text-sm text-rose-600 hover:text-rose-700"
-            onClick={clearCart}
-          >
-            Clear Cart
-          </button>
+          <div className="mt-2">
+            <button
+              type="button"
+              onClick={clearCart}
+              className="inline-flex items-center gap-2 rounded-lg border border-rose-300 bg-white px-4 py-2 text-sm font-medium text-rose-700 shadow-sm transition hover:bg-rose-50 hover:border-rose-400"
+              title="Remove all items from your cart"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className="h-4 w-4"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 100 2h.293l.853 10.24A2 2 0 007.14 18h5.72a2 2 0 001.994-1.76L15.707 6H16a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0010 2H9zm-1.707 6a1 1 0 112 0v7a1 1 0 11-2 0V8zm4 0a1 1 0 112 0v7a1 1 0 11-2 0V8z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              Clear cart
+            </button>
+          </div>
         </div>
 
         <div className="lg:col-span-4">

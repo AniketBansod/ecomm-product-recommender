@@ -29,6 +29,9 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 TOP_K_DEFAULT = int(os.getenv("TOP_K", "10"))
+RANK_ALPHA = float(os.getenv("RANK_ALPHA", "0.7"))
+RANK_BETA = float(os.getenv("RANK_BETA", "0.2"))
+RANK_GAMMA = float(os.getenv("RANK_GAMMA", "0.1"))
 
 # Redis TTLs
 EXPLAIN_TTL = int(os.getenv("EXPLAIN_TTL", "86400"))     # 24 hours
@@ -145,7 +148,10 @@ def template_explain(user_id: str, product: dict, events: List[dict]):
     return base + suffix
 
 
-def call_openai_explain(user_id: str, product: dict, events: List[dict]):
+def call_openai_explain(user_id: str, product: dict, events: List[dict],
+                        filter_category: Optional[str] = None,
+                        min_price: Optional[float] = None,
+                        max_price: Optional[float] = None):
     if not OPENAI_API_KEY:
         return {"text": template_explain(user_id, product, events), "source": "template"}
 
@@ -153,8 +159,15 @@ def call_openai_explain(user_id: str, product: dict, events: List[dict]):
 
     context = [f"{ev['event_type']}:{ev['product_id']}" for ev in events[-6:]]
 
+    filters_text = ""
+    if filter_category or (min_price is not None and max_price is not None):
+        pr = f"price between {min_price} and {max_price}" if (min_price is not None and max_price is not None) else ""
+        cat = f"category {filter_category}" if filter_category else ""
+        both = ", ".join([p for p in [cat, pr] if p])
+        filters_text = f"\nUser selected filters: {both}"
+
     prompt = f"""
-User recent actions: {context}
+User recent actions: {context}{filters_text}
 
 Product:
 - Title: {product.get('title')}
@@ -162,7 +175,7 @@ Product:
 - Category: {product.get('normalized_top_category')}
 - Price: {product.get('price')}
 
-Write a concise, helpful explanation (2 sentences) of why this product is recommended.
+Write a concise, helpful explanation (2 sentences) of why this product is recommended, referencing both recent activity and selected filters when provided.
 """
 
     try:
@@ -248,7 +261,9 @@ def session_summary(session_id: str):
 def recommend(
     user_id: str = Query(...),
     k: int = TOP_K_DEFAULT,
-    filter_category: Optional[str] = None
+    filter_category: Optional[str] = None,
+    min_price: Optional[float] = None,
+    max_price: Optional[float] = None
 ):
     # fetch real user events
     summary = requests.get(f"{NODE_BACKEND}/api/events/{user_id}").json()
@@ -257,7 +272,9 @@ def recommend(
     # cache key
     evhash = events_hash(events)
     fcat = filter_category or "all"
-    cache_key = f"recommend:{user_id}:{evhash}:{fcat}:k{k}"
+    mp = "none" if min_price is None else str(min_price)
+    xp = "none" if max_price is None else str(max_price)
+    cache_key = f"recommend:{user_id}:{evhash}:{fcat}:{mp}:{xp}:k{k}"
 
     cached = get_json(cache_key)
     if cached:
@@ -270,39 +287,103 @@ def recommend(
         user_vec = np.mean(embeddings, axis=0).reshape(1, -1)
         faiss.normalize_L2(user_vec)
 
-    # FAISS search
-    D, I = vector_search(user_vec, top_k=max(k * 3, 50))
+    # FAISS search with larger candidate set
+    D, I = vector_search(user_vec, top_k=max(k * 5, 50))
 
-    results = []
+    raw_candidates = []
     for sim_row, idx_row in zip(D.tolist(), I.tolist()):
         for sim, idx in zip(sim_row, idx_row):
             pid = PRODUCT_IDS[idx]
             prod = product_lookup.get(pid)
-
-            if filter_category and prod["normalized_top_category"] != filter_category:
+            if not prod:
                 continue
 
-            results.append({
-                "product_id": pid,
-                "score": float(sim),
-                "product": prod
-            })
+            # Price checks
+            price_ok = True
+            try:
+                p = float(prod.get("price") or 0)
+            except Exception:
+                p = 0.0
+            if min_price is not None and p < float(min_price):
+                price_ok = False
+            if max_price is not None and p > float(max_price):
+                price_ok = False
 
-            if len(results) >= k:
-                break
-        if len(results) >= k:
+            # Category match flag
+            cat_match = 1 if (filter_category and prod.get("normalized_top_category") == filter_category) else 0
+
+            raw_candidates.append((pid, float(sim), prod, cat_match, price_ok))
+
+    # Separate candidates by filter match
+    filtered = []
+    fallback_pool = []
+    for pid, sim, prod, cat_match, price_ok in raw_candidates:
+        if filter_category or (min_price is not None or max_price is not None):
+            if (not filter_category or cat_match == 1) and (min_price is None and max_price is None or price_ok):
+                filtered.append((pid, sim, prod, cat_match, price_ok))
+            else:
+                fallback_pool.append((pid, sim, prod, cat_match, price_ok))
+        else:
+            filtered.append((pid, sim, prod, cat_match, price_ok))
+
+    # Scoring
+    def norm_sim(x: float) -> float:
+        # clamp to [0,1]
+        return max(0.0, min(1.0, x))
+
+    results_scored = []
+    for pid, sim, prod, cat_match, price_ok in filtered:
+        ns = norm_sim(sim)
+        # price proximity
+        if min_price is not None and max_price is not None and float(max_price) > float(min_price):
+            mid = (float(min_price) + float(max_price)) / 2.0
+            rng = (float(max_price) - float(min_price)) + 1.0
+            try:
+                pp = float(prod.get("price") or 0)
+            except Exception:
+                pp = 0.0
+            price_score = max(0.0, 1.0 - abs(pp - mid) / rng)
+        else:
+            price_score = 0.0
+
+        final = RANK_ALPHA * ns + RANK_BETA * (cat_match if filter_category else 0.0) + RANK_GAMMA * price_score
+        results_scored.append((final, pid, sim, prod))
+
+    # Sort by final score
+    results_scored.sort(key=lambda t: t[0], reverse=True)
+
+    # Fill up to k, using fallback pool if necessary
+    chosen = []
+    seen = set()
+    for final, pid, sim, prod in results_scored:
+        if pid in seen:
+            continue
+        chosen.append({"product_id": pid, "score": final, "product": prod})
+        seen.add(pid)
+        if len(chosen) >= k:
             break
 
-    set_json(cache_key, results, ex=RECOMMEND_TTL)
+    if len(chosen) < k:
+        for pid, sim, prod, cat_match, price_ok in fallback_pool:
+            if pid in seen:
+                continue
+            chosen.append({"product_id": pid, "score": norm_sim(sim), "product": prod})
+            seen.add(pid)
+            if len(chosen) >= k:
+                break
 
-    return {"cached": False, "results": results}
+    set_json(cache_key, chosen, ex=RECOMMEND_TTL)
+    return {"cached": False, "results": chosen}
 
 
 # ---------------- EXPLAIN ----------------
 @app.get("/explain")
 def explain(
     user_id: str = Query(...),
-    product_id: str = Query(...)
+    product_id: str = Query(...),
+    filter_category: Optional[str] = None,
+    min_price: Optional[float] = None,
+    max_price: Optional[float] = None
 ):
     if product_id not in product_lookup:
         raise HTTPException(404, "Product not found")
@@ -320,7 +401,7 @@ def explain(
     if cached:
         return {"cached": True, "explanation": cached}
 
-    resp = call_openai_explain(user_id, product, events)
+    resp = call_openai_explain(user_id, product, events, filter_category, min_price, max_price)
 
     set_json(cache_key, resp, ex=EXPLAIN_TTL)
 

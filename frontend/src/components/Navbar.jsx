@@ -5,7 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { getGuestId } from "../utils/guest";
 import { useCart } from "../context/CartContext";
 export default function Navbar() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const { cart } = useCart();
   const navigate = useNavigate();
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -43,9 +43,25 @@ export default function Navbar() {
             )}
           </button>
 
-          <Link to="/login" className="px-3 py-1 rounded hover:bg-gray-100">
-            <User />
-          </Link>
+          {user ? (
+            <button
+              type="button"
+              onClick={() => logout()}
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50"
+              title="Logout"
+            >
+              <User className="w-4 h-4" />
+              Logout
+            </button>
+          ) : (
+            <Link
+              to="/login"
+              className="px-3 py-1 rounded hover:bg-gray-100"
+              title="Login"
+            >
+              <User />
+            </Link>
+          )}
           <button
             onClick={() => {
               if (!user) getGuestId();

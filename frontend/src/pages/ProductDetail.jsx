@@ -82,8 +82,17 @@ export default function ProductDetail() {
     try {
       const uid = user?.user_id || getGuestId();
 
-      // Use unified recommend API
-      const res = await apiGet(`/recommend?session_id=${uid}&k=6`);
+      // Use unified recommend API with optional filters from localStorage (if set in AI modal)
+      let params = new URLSearchParams({ session_id: uid, k: 6 });
+      try {
+        const saved = JSON.parse(localStorage.getItem("aiFilters") || "{}");
+        if (saved.filter_category)
+          params.set("filter_category", saved.filter_category);
+        if (saved.min_price) params.set("min_price", saved.min_price);
+        if (saved.max_price) params.set("max_price", saved.max_price);
+      } catch {}
+
+      const res = await apiGet(`/recommend?${params.toString()}`);
       setReco(res.recommended_products || []);
     } catch (err) {
       console.log("Recommendation error:", err);

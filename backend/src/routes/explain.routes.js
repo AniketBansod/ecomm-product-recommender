@@ -2,6 +2,7 @@ import express from "express";
 import axios from "axios";
 import OpenAI from "openai";
 import { getRedis } from "../config/redis.js";
+import sessionGuard from "../middlewares/sessionGuard.js";
 
 const router = express.Router();
 
@@ -19,16 +20,18 @@ const openai = new OpenAI({
 });
 
 // GET: /api/explain?session_id=123&product_id=ABC
-router.get("/", async (req, res) => {
+// Session required (guest or logged-in). If missing, block.
+router.get("/", sessionGuard(false), async (req, res) => {
   try {
-    const { session_id, product_id } = req.query;
+    const { session_id, product_id, filter_category, min_price, max_price } = req.query;
+    const sid = session_id || req.sessionId;
 
-    if (!session_id || !product_id) {
+    if (!sid || !product_id) {
       return res.status(400).json({ error: "Missing session_id or product_id" });
     }
 
     // ---- 1️⃣ Check Redis cache ----
-    const cacheKey = `explain:${session_id}:${product_id}`;
+    const cacheKey = `explain:${sid}:${product_id}`;
     const cached = redis ? await redis.get(cacheKey) : null;
 
     if (cached) {
@@ -44,7 +47,7 @@ router.get("/", async (req, res) => {
 
     // ---- 3️⃣ Fetch user event summary ----
     const events = await axios.get(
-      `${process.env.RECOMMENDER_API_URL}/session_summary/${session_id}`
+      `${process.env.RECOMMENDER_API_URL}/session_summary/${sid}`
     );
 
     const userSummary = events.data || {};
@@ -58,6 +61,9 @@ ${JSON.stringify(userSummary, null, 2)}
 
 Recommended product:
 ${JSON.stringify(productData, null, 2)}
+
+   User selected filters:
+   ${JSON.stringify({ filter_category, min_price, max_price }, null, 2)}
 
 Explain in simple, clear language WHY this product is recommended.
 Focus on:
@@ -91,7 +97,7 @@ Keep the explanation short and helpful (4–6 sentences).
       try {
         const recommenderURL = `${process.env.RECOMMENDER_API_URL}/explain`;
         const r = await axios.get(recommenderURL, {
-          params: { user_id: session_id, product_id }
+          params: { user_id: sid, product_id, filter_category, min_price, max_price }
         });
 
         const fallback = r.data.explanation?.text || r.data.explanation || "We recommended this based on your recent browsing and similar product attributes.";

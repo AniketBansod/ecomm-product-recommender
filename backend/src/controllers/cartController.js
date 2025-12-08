@@ -4,7 +4,7 @@ import Product from "../models/Product.js";
 // Get cart for a user/guest
 export const getCart = async (req, res) => {
   try {
-    const userId = req.params.user_id;
+    const userId = req.sessionId || req.params.user_id;
 
     let cart = await Cart.findOne({ user_id: userId }).populate("items.product_id");
 
@@ -22,7 +22,8 @@ export const getCart = async (req, res) => {
 // Add item to cart
 export const addToCart = async (req, res) => {
   try {
-    const { user_id, product_id, quantity } = req.body;
+    const { product_id, quantity } = req.body;
+    const user_id = req.sessionId || req.body.user_id;
 
     let cart = await Cart.findOne({ user_id });
 
@@ -49,7 +50,8 @@ export const addToCart = async (req, res) => {
 // Remove item
 export const removeFromCart = async (req, res) => {
   try {
-    const { user_id, product_id } = req.body;
+    const { product_id } = req.body;
+    const user_id = req.sessionId || req.body.user_id;
 
     let cart = await Cart.findOne({ user_id });
 
@@ -68,7 +70,7 @@ export const removeFromCart = async (req, res) => {
 // Clear cart
 export const clearCart = async (req, res) => {
   try {
-    const user_id = req.params.user_id;
+    const user_id = req.sessionId || req.params.user_id;
 
     let cart = await Cart.findOneAndUpdate(
       { user_id },
@@ -76,7 +78,7 @@ export const clearCart = async (req, res) => {
       { new: true }
     );
 
-    res.json(cart);
+    res.json(cart || { user_id, items: [] });
   } catch (err) {
     res.status(500).json({ message: "Failed to clear cart" });
   }
