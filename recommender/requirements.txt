@@ -1,7 +1,7 @@
 fastapi
 uvicorn[standard]
 sentence-transformers==2.2.2
-faiss-cpu==1.7.4
+faiss-cpu==1.13.1
 numpy
 pandas
 python-dotenv
