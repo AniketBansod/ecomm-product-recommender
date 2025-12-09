@@ -2,6 +2,7 @@ import os
 import json
 import numpy as np
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import faiss
@@ -40,11 +41,21 @@ RECOMMEND_TTL = int(os.getenv("RECOMMEND_TTL", "300"))   # 5 minutes
 
 # Node backend URL
 NODE_BACKEND = os.getenv("NODE_BACKEND_URL", "http://localhost:5000")
+FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
 
 # ----------------------------------------------------
 # INIT
 # ----------------------------------------------------
 app = FastAPI(title="ShopSense Recommender")
+
+# CORS for frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[FRONTEND_ORIGIN],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 products_df = load_products(PRODUCTS_CSV)
 product_lookup = {str(r["product_id"]): r.to_dict() for _, r in products_df.iterrows()}
@@ -466,4 +477,5 @@ def explain(
 
 # ---------------- SERVER START ----------------
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
