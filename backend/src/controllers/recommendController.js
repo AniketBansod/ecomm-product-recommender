@@ -1,5 +1,5 @@
 import axios from "axios";
-import EventLog from "../models/EventLog.js";
+import Event from "../models/Event.js";
 import Product from "../models/Product.js";
 
 export const getRecommendations = async (req, res) => {
@@ -20,8 +20,8 @@ export const getRecommendations = async (req, res) => {
       return res.status(400).json({ error: "session_id is required" });
     }
 
-    // 1️⃣ Fetch recent user events (EventLog is primary store consumed by FastAPI)
-    const events = await EventLog.find({ user_id: sessionId })
+    // 1️⃣ Fetch recent user events (Event is primary store)
+    const events = await Event.find({ user_id: sessionId })
       .sort({ createdAt: -1 })
       .limit(10);
 
