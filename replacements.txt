@@ -1,2 +1,0 @@
-regex:^OPENAI_API_KEY=.*$==>OPENAI_API_KEY=your_openai_key_here
-regex:sk-[A-Za-z0-9_-]{20,}==>sk-REDACTED
