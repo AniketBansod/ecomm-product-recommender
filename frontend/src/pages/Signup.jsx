@@ -19,10 +19,13 @@ export default function Signup() {
     try {
       const res = await apiPost("/auth/signup", { name, email, password });
 
+      // Backend returns { token, user: { id, name, email } }
       loginUser({
         token: res.token,
-        user_id: res.user_id,
-        name: res.name,
+        user_id: res.user?.id,
+        id: res.user?.id,
+        name: res.user?.name,
+        email: res.user?.email,
       });
 
       navigate("/catalog");
