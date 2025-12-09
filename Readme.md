@@ -53,9 +53,9 @@ Features:
 
 ## 2. Live Demo
 
-- **Live Website:** https://ecomm-product-recommender-exq7.vercel.app/
 - **Loom Demo Video:** https://www.loom.com/share/2ddf83c8d439477fb0ab6aa42dce550e
 - **Google Drive Demo Video:** https://drive.google.com/file/d/1UunM5QqlHNOjVS2pWY7N-jokGzyUClRa/view?usp=sharing
+- **Live Website:** https://ecomm-product-recommender-exq7.vercel.app/
 
 ---
 
