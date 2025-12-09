@@ -38,7 +38,12 @@ export const getRecommendations = async (req, res) => {
     }
 
     // 2️⃣ Send to FastAPI recommender
-    const recommenderURL = `${process.env.RECOMMENDER_API_URL}/recommend`;
+    const base = process.env.RECOMMENDER_API_URL;
+    if (!base) {
+      console.error("Recommendation error: RECOMMENDER_API_URL is not set");
+      return res.status(503).json({ error: "Recommender service unavailable" });
+    }
+    const recommenderURL = `${base.replace(/\/$/, "")}/recommend`;
 
     // FastAPI fetches events from Node directly; just pass user_id and k
     const response = await axios.get(recommenderURL, {

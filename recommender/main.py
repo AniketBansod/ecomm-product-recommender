@@ -63,12 +63,25 @@ product_lookup = {str(r["product_id"]): r.to_dict() for _, r in products_df.iter
 # Load FAISS + embeddings
 if (
     os.path.exists(EMBEDDINGS_PATH)
-    and os.path.exists(FAISS_INDEX_PATH)
     and os.path.exists(PRODUCT_IDS_PATH)
 ):
     embeddings = np.load(EMBEDDINGS_PATH)
-    index = faiss.read_index(FAISS_INDEX_PATH)
     PRODUCT_IDS = json.load(open(PRODUCT_IDS_PATH, "r"))
+    # Build or load FAISS index
+    if os.path.exists(FAISS_INDEX_PATH):
+        index = faiss.read_index(FAISS_INDEX_PATH)
+    else:
+        try:
+            # Create IndexFlatIP for cosine similarity (with L2-normalized vectors)
+            d = embeddings.shape[1]
+            index = faiss.IndexFlatIP(d)
+            faiss.normalize_L2(embeddings)
+            index.add(embeddings.astype("float32"))
+            faiss.write_index(index, FAISS_INDEX_PATH)
+            print("[recommender] FAISS index built and saved:", FAISS_INDEX_PATH)
+        except Exception as e:
+            print("[recommender] Failed to build FAISS index:", e)
+            index = None
 else:
     embeddings = None
     index = None
